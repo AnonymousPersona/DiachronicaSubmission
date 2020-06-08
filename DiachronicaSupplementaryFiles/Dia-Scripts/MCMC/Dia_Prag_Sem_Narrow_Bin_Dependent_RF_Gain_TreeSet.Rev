@@ -1,0 +1,99 @@
+
+path = ""
+
+morph = readDiscreteCharacterData(path + "Dia-IE_Narrow_Pragmatic_Semantic_Definite.nex")
+
+nSites <- morph.nchar()
+
+
+moves = VectorMoves()
+monitors = VectorMonitors()
+
+trees = readTrees(path + "Dia-ieo_fifty.nex", treetype="non-clock")
+
+
+treetrace = treeTrace(trees)
+psi ~ dnEmpiricalTree(treetrace)
+
+moves.append( mvEmpiricalTree(psi, weight=2) )
+
+#This is the Chang A3 MAP tree
+map_tree = readBranchLengthTrees(path + "Dia-ChangA3.tree")[1]
+
+rate_pr_pragmatic := psi.treeLength() / 22
+rate_pr_semantic := psi.treeLength() / 18
+
+
+#Gain of indefinite article with no definiteness marker
+rate_00_01 ~ dnExponential(rate_pr_semantic)
+#Gain of definiteness marker with no indefinite article
+rate_00_10 ~ dnExponential(rate_pr_pragmatic)
+#Gain of definiteness marker with indefinite article
+rate_01_11 ~ dnExponential(rate_pr_pragmatic)
+#Gain of indefinite article with definiteness marker
+rate_10_11 ~ dnExponential(rate_pr_semantic)
+
+
+
+#Gain
+moves.append( mvScale( rate_00_01, lambda=1, tune=true, weight=2 ) )
+moves.append( mvScale( rate_00_10, lambda=1, tune=true, weight=2 ) )
+moves.append( mvScale( rate_01_11, lambda=1, tune=true, weight=2 ) )
+moves.append( mvScale( rate_10_11, lambda=1, tune=true, weight=2 ) )
+
+moves.append( mvScale( rate_00_01, lambda=0.1, tune=true, weight=2 ) )
+moves.append( mvScale( rate_00_10, lambda=0.1, tune=true, weight=2 ) )
+moves.append( mvScale( rate_01_11, lambda=0.1, tune=true, weight=2 ) )
+moves.append( mvScale( rate_10_11, lambda=0.1, tune=true, weight=2 ) )
+
+moves.append( mvScale( rate_00_01, lambda=0.01, tune=true, weight=2 ) )
+moves.append( mvScale( rate_00_10, lambda=0.01, tune=true, weight=2 ) )
+moves.append( mvScale( rate_01_11, lambda=0.01, tune=true, weight=2 ) )
+moves.append( mvScale( rate_10_11, lambda=0.01, tune=true, weight=2 ) )
+
+rates := [ [ 0.0, rate_00_10 , rate_00_01 , 0.0 ],
+           [ 0.0 , 0.0, 0.0, rate_10_11  ],
+           [ 0.0 , 0.0, 0.0, rate_01_11  ], 
+           [ 0.0, 0.0 , 0.0 , 0.0 ] ]
+
+Q := fnFreeK( rates , rescaled=FALSE ) 
+
+rf <- [1.0, 0.0, 0.0, 0]
+
+phyMorph ~ dnPhyloCTMC(tree=psi, Q=Q, rootFrequencies=rf, type="Standard")
+
+phyMorph.clamp(morph)
+
+mymodel = model ( Q )
+
+
+monitors.append( mnModel(filename="output/Prag_Sem_Narrow_Bin_Dependent_RF_Gain_TreeSet.log", printgen=100) )
+
+monitors.append( mnScreen(printgen=100) )
+
+
+
+
+
+
+
+monitors.append( mnFile( filename="output/Prag_Sem_Narrow_Bin_Dependent_RF_Gain_TreeSet.trees", printgen=100, psi ) ) 
+
+
+
+monitors.append( mnJointConditionalAncestralState(tree=psi, ctmc=phyMorph, filename="output/Prag_Sem_Narrow_Bin_Dependent_RF_Gain_TreeSet_states.log", type="Standard", printgen=100, withStartStates=FALSE) ) 
+
+
+
+
+monitors.append( mnStochasticCharacterMap(ctmc=phyMorph, filename="output/Prag_Sem_Narrow_Bin_Dependent_RF_Gain_TreeSet_maps.log", printgen=100) )
+
+
+
+mymcmc = mcmc(mymodel, monitors, moves, nruns=6, combine="mixed")
+
+mymcmc.burnin(generations=1000,tuningInterval=100)
+mymcmc.run(generations=10000, tuningInterval=200)
+
+mymcmc.operatorSummary()
+

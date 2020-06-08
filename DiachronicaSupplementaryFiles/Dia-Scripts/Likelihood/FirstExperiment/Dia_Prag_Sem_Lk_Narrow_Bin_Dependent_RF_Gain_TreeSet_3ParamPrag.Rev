@@ -1,0 +1,91 @@
+clear()
+
+path = ""
+
+morph = readDiscreteCharacterData(path + "Dia-IE_Narrow_Pragmatic_Semantic_Definite.nex")
+
+
+
+nSites <- morph.nchar()
+
+moves = VectorMoves()
+monitors = VectorMonitors()
+
+trees = readBranchLengthTrees(path + "Dia-ieo_fifty.nex")
+
+
+
+
+
+treetrace = treeTrace(trees)
+psi ~ dnEmpiricalTree(treetrace)
+moves.append( mvEmpiricalTree(psi, weight=2) )
+
+
+
+
+map_tree <- readBranchLengthTrees(path + "Dia-ChangA3.tree")[1]
+
+
+
+
+rate_pr_pragmatic := psi.treeLength() / 22
+rate_pr_semantic := psi.treeLength() / 18
+
+rate_00_01 ~ dnExponential(rate_pr_semantic)
+
+rate_10_11 ~ dnExponential(rate_pr_semantic)
+
+rate_prag ~ dnExponential(rate_pr_pragmatic)
+
+
+
+#Gain
+moves.append( mvScale( rate_00_01, lambda=1, tune=true, weight=2 ) )
+moves.append( mvScale( rate_10_11, lambda=1, tune=true, weight=2 ) )
+moves.append( mvScale( rate_prag, lambda=1, tune=true, weight=2 ) )
+
+moves.append( mvScale( rate_00_01, lambda=0.1, tune=true, weight=2 ) )
+moves.append( mvScale( rate_10_11, lambda=0.1, tune=true, weight=2 ) )
+moves.append( mvScale( rate_prag, lambda=0.1, tune=true, weight=2 ) )
+
+moves.append( mvScale( rate_00_01, lambda=0.01, tune=true, weight=2 ) )
+moves.append( mvScale( rate_10_11, lambda=0.01, tune=true, weight=2 ) )
+moves.append( mvScale( rate_prag, lambda=0.01, tune=true, weight=2 ) )
+
+
+
+rates := [ [ 0.0, rate_prag , rate_00_01 , 0.0 ],
+           [ 0.0 , 0.0, 0.0, rate_10_11  ],
+           [ 0.0 , 0.0, 0.0, rate_prag  ], 
+           [ 0.0, 0.0 , 0.0 , 0.0 ] ]
+
+Q := fnFreeK( rates , rescaled=FALSE ) 
+
+
+rf <- [1.0, 0.0, 0.0, 0.0]
+
+
+phyMorph ~ dnPhyloCTMC(tree=psi, Q=Q, rootFrequencies=rf, type="Standard", nSites=1) 
+
+
+phyMorph.clamp(morph)
+
+
+mymodel = model ( Q )
+
+
+####################################
+# Run the power-posterior analysis #
+####################################
+pow_p = powerPosterior(mymodel, moves, monitors, "output/Prag_Sem_Narrow_Bin_Dependent_RF_Pi_Gain_TreeSet_3ParamDef_powp.out", cats=127, sampleFreq=10)
+pow_p.burnin(generations=2000,tuningInterval=200)
+pow_p.run(generations=10000)
+###################################
+# Run the stepping-stone analysis #
+###################################
+ss = steppingStoneSampler(file="output/Prag_Sem_Narrow_Bin_Dependent_RF_Pi_Gain_TreeSet_3ParamDef_powp.out", powerColumnName="power", likelihoodColumnName="likelihood")
+write("Stepping stone marginal likelihood:\t", ss.marginal() )
+ps = pathSampler(file="output/Prag_Sem_Narrow_Bin_Dependent_RF_Pi_Gain_TreeSet_3ParamDef_powp.out", powerColumnName="power", likelihoodColumnName="likelihood")
+write("Path-sampling marginal likelihood:\t", ps.marginal() )
+

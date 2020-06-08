@@ -1,0 +1,73 @@
+clear()
+path = 
+morph = readDiscreteCharacterData(path + "Dia-IE_Narrow_Definite_Indefinite_Merged_Multistate.nex")
+
+
+moves = VectorMoves()
+monitors = VectorMonitors()
+
+trees = readTrees(path + "Dia-ieo_fifty.nex", treetype="non-clock")
+
+
+treetrace = treeTrace(trees)
+psi ~ dnEmpiricalTree(treetrace)
+moves.append( mvEmpiricalTree(psi, weight=2) )
+
+#This is the Chang A3 MAP tree
+map_tree = readBranchLengthTrees(path + "Dia-ChangA3.tree")[1]
+
+rate_pr_def_gain := psi.treeLength() / 18
+rate_pr_indef_gain := psi.treeLength() / 14
+
+rate_def_gain ~ dnExponential(rate_pr_def_gain)
+rate_indef_gain ~ dnExponential(rate_pr_indef_gain)
+
+
+
+#Gain
+moves.append( mvScale( rate_def_gain, lambda=1,  weight=2 ) )
+moves.append( mvScale( rate_indef_gain, lambda=1,  weight=2 ) )
+
+moves.append( mvScale( rate_def_gain, lambda=0.1,  weight=2 ) )
+moves.append( mvScale( rate_indef_gain, lambda=0.1,  weight=2 ) )
+
+moves.append( mvScale( rate_def_gain, lambda=0.01,  weight=2 ) )
+moves.append( mvScale( rate_indef_gain, lambda=0.01,  weight=2 ) )
+
+
+
+rates := [ [ 0.0, rate_def_gain, rate_indef_gain, 0.0 ],
+           [ 0.0, 0.0, 0.0, rate_indef_gain ],
+           [ 0.0, 0.0, 0.0, rate_def_gain   ], 
+           [ 0.0, 0.0, 0.0, 0.0 ] ]
+
+Q := fnFreeK( rates , rescaled=FALSE ) 
+
+
+rf <- [1.0, 0.0, 0.0, 0.0]
+
+phyMorph ~ dnPhyloCTMC(tree=psi, Q=Q, rootFrequencies=rf, type="Standard", nSites=1) 
+
+phyMorph.clamp(morph)
+
+
+
+mymodel = model ( Q )
+
+
+####################################
+# Run the power-posterior analysis #
+####################################
+pow_p = powerPosterior(mymodel, moves, monitors, "output/Corr_Narrow_Bin_Independent_RF_Gain_TreeSet_powp.out", cats=127, sampleFreq=10)
+pow_p.burnin(generations=2000,tuningInterval=200)
+pow_p.run(generations=10000)
+###################################
+# Run the stepping-stone analysis #
+###################################
+ss = steppingStoneSampler(file="output/Corr_Narrow_Bin_Independent_RF_Gain_TreeSet_powp.out", powerColumnName="power", likelihoodColumnName="likelihood")
+write("Stepping stone marginal likelihood:\t", ss.marginal() )
+ps = pathSampler(file="output/Corr_Narrow_Bin_Independent_RF_Gain_TreeSet_powp.out", powerColumnName="power", likelihoodColumnName="likelihood")
+write("Path-sampling marginal likelihood:\t", ps.marginal() )
+
+
+
